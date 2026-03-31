@@ -1,19 +1,40 @@
 import os
 import uuid
 import re
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import aiofiles
 from fastapi import FastAPI, File, UploadFile, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl, field_validator
+from sqlalchemy import text
 
 from config import settings
+from database import engine
+
+# Modelleri yükle (Base.metadata'ya kaydolsunlar)
+import models  # noqa: F401
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Uygulama başlatılırken DB bağlantısını doğrula, kapatılırken temizle."""
+    # Startup
+    async with engine.begin() as conn:
+        await conn.execute(text("SELECT 1"))
+    print("✅ Veritabanı bağlantısı doğrulandı.")
+    yield
+    # Shutdown
+    await engine.dispose()
+    print("🔌 Veritabanı bağlantısı kapatıldı.")
+
 
 app = FastAPI(
     title="VeraDeep API",
     description="Multimodal deepfake detection backend",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

@@ -42,4 +42,13 @@ uvicorn main:app --reload
 > `http://localhost:8000` üzerinde çalışır. Swagger UI: `http://localhost:8000/docs`
 
 ---
-
+Docker Desktop kurulu olmalıdır. Kurulum sonrası aşağıdaki adımları izleyin.
+# 1. PostgreSQL konteynerini başlat
+docker compose up -d db
+# 2. Tabloları oluştur (hızlı yol)
+cd backend
+py init_db.py
+# 3. Veya Alembic ile migration oluştur (önerilen yol)
+cd backend
+py -m alembic revision --autogenerate -m "create initial tables"
+py -m alembic upgrade head
