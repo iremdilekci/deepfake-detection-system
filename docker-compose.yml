@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: veradeep_db
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-veradeep}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-veradeep_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-veradeep_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - veradeep_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-veradeep} -d ${POSTGRES_DB:-veradeep_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  veradeep_pgdata:
+    driver: local
