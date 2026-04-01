@@ -1,0 +1,14 @@
+{
+    "metadata": {
+        "analiz_zamani": "2026-04-02 02:08:42",
+        "kullanilan_model": "EfficientNet-B0 (Pre-trained)",
+        "toplam_islenen_kare": 124
+    },
+    "analiz_sonuclari": {
+        "ortalama_guven_skoru": 0.591,
+        "esik_degeri": 0.5,
+        "en_yuksek_sahtelik_skoru": 0.5912,
+        "en_dusuk_sahtelik_skoru": 0.5909
+    },
+    "nihai_karar": "🚨 DEEPFAKE (SAHTE)"
+}
