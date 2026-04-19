@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:3000"
     upload_dir: str = "uploads"
     max_file_size_mb: int = 500
+    analysis_timeout_seconds: int = 90
 
     # ── PostgreSQL ──
     postgres_user: str = "veradeep"

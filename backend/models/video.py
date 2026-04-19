@@ -35,12 +35,12 @@ class Video(Base):
     )
 
     # ── Foreign Key ──
-    owner_id: Mapped[uuid.UUID] = mapped_column(
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
-        comment="Videoyu yükleyen kullanıcı",
+        comment="Videoyu yükleyen kullanıcı (anonim akışta boş olabilir)",
     )
 
     # ── Video Bilgileri ──
@@ -78,7 +78,7 @@ class Video(Base):
         nullable=False,
         default="pending",
         index=True,
-        comment="pending | processing | completed | failed",
+        comment="uploaded | queued | processing | completed | failed | expired",
     )
 
     # ── Zaman Damgaları ──
@@ -95,7 +95,7 @@ class Video(Base):
     )
 
     # ── İlişkiler ──
-    owner: Mapped["User"] = relationship(  # noqa: F821
+    owner: Mapped["User | None"] = relationship(  # noqa: F821
         back_populates="videos",
     )
     analysis_results: Mapped[list["AnalysisResult"]] = relationship(  # noqa: F821

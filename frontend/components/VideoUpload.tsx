@@ -1,11 +1,13 @@
 "use client";
 
-import { useRef, useState, DragEvent, ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, DragEvent, ChangeEvent } from "react";
 
-const ACCEPTED_TYPES = ["video/mp4", "video/webm", "video/quicktime", "video/x-msvideo", "video/x-matroska"];
-const ACCEPTED_EXTENSIONS = ".mp4,.webm,.mov,.avi,.mkv";
-const MAX_SIZE_MB = 500;
-const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+import {
+  ANALYSIS_ALLOWED_FILE_EXTENSIONS,
+  ANALYSIS_ALLOWED_FILE_TYPES,
+  ANALYSIS_MAX_FILE_SIZE_BYTES,
+  ANALYSIS_MAX_FILE_SIZE_MB,
+} from "@/lib/analysis-contract";
 
 interface VideoUploadProps {
   onFileSelect: (file: File) => void;
@@ -23,13 +25,29 @@ export default function VideoUpload({
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [failedPreviewKey, setFailedPreviewKey] = useState<string | null>(null);
+  const previewKey = selectedFile
+    ? `${selectedFile.name}-${selectedFile.size}-${selectedFile.lastModified}`
+    : null;
+  const previewUrl = useMemo(
+    () => (selectedFile ? URL.createObjectURL(selectedFile) : null),
+    [selectedFile],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   function validate(file: File): string | null {
-    if (!ACCEPTED_TYPES.includes(file.type) && !file.name.match(/\.(mp4|webm|mov|avi|mkv)$/i)) {
+    if (!ANALYSIS_ALLOWED_FILE_TYPES.includes(file.type as (typeof ANALYSIS_ALLOWED_FILE_TYPES)[number]) && !file.name.match(/\.(mp4|webm|mov|avi|mkv)$/i)) {
       return `Desteklenmeyen dosya tipi. Kabul edilenler: MP4, WebM, MOV, AVI, MKV`;
     }
-    if (file.size > MAX_SIZE_BYTES) {
-      return `Dosya boyutu çok büyük. Maksimum: ${MAX_SIZE_MB} MB (Seçilen: ${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+    if (file.size > ANALYSIS_MAX_FILE_SIZE_BYTES) {
+      return `Dosya boyutu çok büyük. Maksimum: ${ANALYSIS_MAX_FILE_SIZE_MB} MB (Seçilen: ${(file.size / 1024 / 1024).toFixed(1)} MB)`;
     }
     return null;
   }
@@ -94,39 +112,61 @@ export default function VideoUpload({
         <input
           ref={inputRef}
           type="file"
-          accept={ACCEPTED_EXTENSIONS}
+          accept={ANALYSIS_ALLOWED_FILE_EXTENSIONS}
           className="hidden"
           onChange={handleChange}
           disabled={isLoading}
         />
 
         {selectedFile ? (
-          <div className="relative flex min-h-56 flex-col items-center justify-center gap-4 px-6 py-10 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600">
-              <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-base font-semibold text-slate-900">{selectedFile.name}</p>
-              <p className="mt-1 text-sm text-slate-500">
-                {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-              </p>
-            </div>
-            <div className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
-              Dosya hazır
-            </div>
-            {!isLoading && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleClear();
-                }}
-                className="text-sm text-slate-500 transition-colors hover:text-rose-500"
-              >
-                Dosyayı kaldır
-              </button>
+          <div className="relative flex min-h-56 flex-col gap-4 px-6 py-6">
+            {previewUrl && failedPreviewKey !== previewKey ? (
+              <video
+                key={previewKey ?? "preview"}
+                controls
+                preload="metadata"
+                src={previewUrl}
+                onError={() => setFailedPreviewKey(previewKey)}
+                className="aspect-video w-full rounded-[24px] border border-emerald-200 bg-slate-950 object-cover"
+              />
+            ) : (
+              <div className="flex aspect-video items-center justify-center rounded-[24px] border border-dashed border-emerald-200 bg-emerald-50 px-6 text-center text-sm text-emerald-700">
+                Tarayici preview olusturamazsa dosya bilgileri fallback olarak korunur.
+              </div>
             )}
+
+            <div className="flex flex-col items-center gap-3 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600">
+                <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-base font-semibold text-slate-900">{selectedFile.name}</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
+                  Dosya hazir
+                </span>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                  {(selectedFile.type || "Bilinmeyen format").replace("video/", "").toUpperCase()}
+                </span>
+              </div>
+              {!isLoading && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleClear();
+                  }}
+                  className="text-sm text-slate-500 transition-colors hover:text-rose-500"
+                >
+                  Dosyayı kaldır
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="relative flex min-h-56 flex-col items-center justify-center gap-4 px-6 py-10 text-center">
@@ -154,7 +194,7 @@ export default function VideoUpload({
               <span className="rounded-full bg-slate-100 px-3 py-1">AVI</span>
               <span className="rounded-full bg-slate-100 px-3 py-1">MKV</span>
             </div>
-            <p className="text-xs text-slate-400">Maksimum dosya boyutu {MAX_SIZE_MB} MB</p>
+            <p className="text-xs text-slate-400">Maksimum dosya boyutu {ANALYSIS_MAX_FILE_SIZE_MB} MB</p>
           </div>
         )}
       </div>

@@ -2,8 +2,7 @@
 
 import { useState, ChangeEvent } from "react";
 
-const URL_PATTERN =
-  /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|tiktok\.com\/@[\w.]+\/video\/|instagram\.com\/(reel|p|tv)\/|twitter\.com\/\w+\/status\/|x\.com\/\w+\/status\/)[\w\-?=&%./]+/i;
+import { SUPPORTED_VIDEO_URL_PATTERN } from "@/lib/analysis-contract";
 
 interface VideoLinkInputProps {
   onUrlSubmit: (url: string) => void;
@@ -17,7 +16,7 @@ export default function VideoLinkInput({ onUrlSubmit, isLoading }: VideoLinkInpu
 
   function validate(value: string): string | null {
     if (!value.trim()) return "URL boş bırakılamaz.";
-    if (!URL_PATTERN.test(value.trim())) {
+    if (!SUPPORTED_VIDEO_URL_PATTERN.test(value.trim())) {
       return "Geçerli bir YouTube, TikTok, Instagram, Twitter/X video linki girin.";
     }
     return null;

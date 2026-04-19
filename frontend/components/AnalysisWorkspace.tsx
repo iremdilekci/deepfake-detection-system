@@ -1,75 +1,42 @@
 "use client";
 
 import { useState } from "react";
+import AnalysisResultPanel from "@/components/AnalysisResultPanel";
 import VideoLinkInput from "@/components/VideoLinkInput";
 import VideoUpload from "@/components/VideoUpload";
-import { uploadVideo, uploadVideoByUrl, UploadResponse } from "@/lib/api";
+import { useAnalysisFlow } from "@/hooks/useAnalysisFlow";
 
 type Tab = "file" | "url";
 
 export default function AnalysisWorkspace() {
   const [activeTab, setActiveTab] = useState<Tab>("file");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [result, setResult] = useState<UploadResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    error,
+    isBusy,
+    phase,
+    progress,
+    result,
+    status,
+    uploadSummary,
+    reset,
+    retryFailedAnalysis,
+    startFileUpload,
+    startUrlUpload,
+  } = useAnalysisFlow();
 
   async function handleFileUpload() {
     if (!selectedFile) return;
-
-    setIsLoading(true);
-    setError(null);
-    setResult(null);
-    setProgress(0);
-
-    const interval = setInterval(() => {
-      setProgress((prev) => (prev < 85 ? prev + Math.random() * 12 : prev));
-    }, 400);
-
-    try {
-      const data = await uploadVideo(selectedFile);
-      clearInterval(interval);
-      setProgress(100);
-      setResult(data);
-    } catch (err) {
-      clearInterval(interval);
-      setProgress(0);
-      setError(err instanceof Error ? err.message : "Beklenmeyen bir hata oluştu.");
-    } finally {
-      setIsLoading(false);
-    }
+    await startFileUpload(selectedFile);
   }
 
   async function handleUrlUpload(url: string) {
-    setIsLoading(true);
-    setError(null);
-    setResult(null);
-    setProgress(0);
-
-    const interval = setInterval(() => {
-      setProgress((prev) => (prev < 85 ? prev + Math.random() * 10 : prev));
-    }, 500);
-
-    try {
-      const data = await uploadVideoByUrl(url);
-      clearInterval(interval);
-      setProgress(100);
-      setResult(data);
-    } catch (err) {
-      clearInterval(interval);
-      setProgress(0);
-      setError(err instanceof Error ? err.message : "Beklenmeyen bir hata oluştu.");
-    } finally {
-      setIsLoading(false);
-    }
+    await startUrlUpload(url);
   }
 
   function handleReset() {
-    setResult(null);
-    setError(null);
-    setProgress(0);
     setSelectedFile(null);
+    reset();
   }
 
   return (
@@ -87,7 +54,8 @@ export default function AnalysisWorkspace() {
           <p className="max-w-xl text-base leading-8 text-slate-600">
             Bu ekranda ister doğrudan video dosyası yükleyebilir ister sosyal
             medya bağlantısı göndererek inceleme sürecini başlatabilirsiniz.
-            Sistem ilk adımda içeriği kuyruğa alır ve size bir işlem kimliği üretir.
+            Sistem yükleme sonrası durumu otomatik takip eder, sonucu hazır
+            olduğunda final skorları ve açıklamayı gösterir.
           </p>
         </div>
 
@@ -96,14 +64,14 @@ export default function AnalysisWorkspace() {
             <p className="text-sm font-semibold text-slate-900">Dosya yükleme</p>
             <p className="mt-2 text-sm leading-7 text-slate-600">
               MP4, WebM, MOV, AVI ve MKV formatlarını kabul eder. Büyük dosyalar
-              için istemci tarafında temel doğrulama uygulanır.
+              için istemci ve backend tarafında ortak doğrulama uygulanır.
             </p>
           </article>
           <article className="rounded-[28px] border border-white/70 bg-white/80 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
             <p className="text-sm font-semibold text-slate-900">Bağlantı analizi</p>
             <p className="mt-2 text-sm leading-7 text-slate-600">
               YouTube, TikTok, Instagram ve X bağlantıları tek alan üzerinden
-              doğrulanır ve analiz kuyruğuna eklenir.
+              doğrulanır, kuyruğa alınır ve durum polling ile izlenir.
             </p>
           </article>
         </div>
@@ -123,63 +91,24 @@ export default function AnalysisWorkspace() {
           </div>
 
           <div className="space-y-6 px-6 py-6">
-            {result ? (
-              <div className="space-y-5">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600">
-                    <svg className="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-lg font-semibold text-slate-950">İşlem kuyruğa alındı</p>
-                    <p className="text-sm text-slate-500">{result.message}</p>
-                  </div>
-                </div>
-
-                <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
-                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
-                    Job ID
-                  </p>
-                  <p className="mt-2 break-all font-mono text-sm text-slate-800">
-                    {result.job_id}
-                  </p>
-
-                  {result.filename && (
-                    <>
-                      <p className="mt-5 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
-                        Dosya
-                      </p>
-                      <p className="mt-2 text-sm text-slate-700">{result.filename}</p>
-                    </>
-                  )}
-
-                  {result.source_url && (
-                    <>
-                      <p className="mt-5 text-xs font-medium uppercase tracking-[0.18em] text-slate-400">
-                        Kaynak URL
-                      </p>
-                      <p className="mt-2 break-all text-sm text-slate-700">{result.source_url}</p>
-                    </>
-                  )}
-                </div>
-
-                <button
-                  onClick={handleReset}
-                  className="w-full rounded-2xl border border-slate-200 bg-white py-3.5 text-sm font-semibold text-slate-800 transition hover:border-slate-300 hover:bg-slate-50"
-                >
-                  Yeni analiz başlat
-                </button>
-              </div>
+            {result || (phase === "failed" && (uploadSummary || status)) ? (
+              <AnalysisResultPanel
+                result={result}
+                status={status}
+                uploadSummary={uploadSummary}
+                selectedFile={selectedFile}
+                isBusy={isBusy}
+                onRetry={retryFailedAnalysis}
+                onReset={handleReset}
+              />
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-2 rounded-[22px] bg-slate-100 p-1">
                   <button
                     onClick={() => {
                       setActiveTab("file");
-                      setError(null);
                     }}
-                    disabled={isLoading}
+                    disabled={isBusy}
                     className={`rounded-[18px] px-4 py-3 text-sm font-medium transition ${
                       activeTab === "file"
                         ? "bg-white text-slate-900 shadow-sm"
@@ -191,9 +120,8 @@ export default function AnalysisWorkspace() {
                   <button
                     onClick={() => {
                       setActiveTab("url");
-                      setError(null);
                     }}
-                    disabled={isLoading}
+                    disabled={isBusy}
                     className={`rounded-[18px] px-4 py-3 text-sm font-medium transition ${
                       activeTab === "url"
                         ? "bg-white text-slate-900 shadow-sm"
@@ -209,25 +137,27 @@ export default function AnalysisWorkspace() {
                     <VideoUpload
                       onFileSelect={setSelectedFile}
                       onClear={() => setSelectedFile(null)}
-                      isLoading={isLoading}
+                      isLoading={isBusy}
                       selectedFile={selectedFile}
                     />
                     <button
                       onClick={handleFileUpload}
-                      disabled={!selectedFile || isLoading}
+                      disabled={!selectedFile || isBusy}
                       className="w-full rounded-2xl bg-slate-900 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
                     >
-                      {isLoading ? "Yükleniyor..." : "Dosyayı incelemeye gönder"}
+                      {isBusy ? "İşlem sürüyor..." : "Dosyayı incelemeye gönder"}
                     </button>
                   </div>
                 ) : (
-                  <VideoLinkInput onUrlSubmit={handleUrlUpload} isLoading={isLoading} />
+                  <VideoLinkInput onUrlSubmit={handleUrlUpload} isLoading={isBusy} />
                 )}
 
-                {isLoading && (
+                {isBusy && (
                   <div className="rounded-[24px] border border-indigo-100 bg-indigo-50 px-4 py-4">
                     <div className="mb-2 flex items-center justify-between text-xs font-medium text-indigo-700">
-                      <span>Yükleme ve kuyruğa ekleme sürüyor</span>
+                      <span>
+                        {phase === "uploading" ? "Yükleme sürüyor" : status?.message ?? "Analiz durumu izleniyor"}
+                      </span>
                       <span>{Math.round(progress)}%</span>
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-white">
@@ -235,6 +165,25 @@ export default function AnalysisWorkspace() {
                         className="h-full rounded-full bg-indigo-500 transition-all duration-300 ease-out"
                         style={{ width: `${progress}%` }}
                       />
+                    </div>
+
+                    <div className="mt-4 grid gap-3 text-sm text-indigo-900 sm:grid-cols-2">
+                      <div className="rounded-2xl bg-white/80 px-4 py-3">
+                        <p className="text-xs font-medium uppercase tracking-[0.16em] text-indigo-400">
+                          Job ID
+                        </p>
+                        <p className="mt-1 break-all font-mono text-sm text-slate-700">
+                          {uploadSummary?.jobId ?? "--"}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-white/80 px-4 py-3">
+                        <p className="text-xs font-medium uppercase tracking-[0.16em] text-indigo-400">
+                          Durum
+                        </p>
+                        <p className="mt-1 text-sm text-slate-700">
+                          {status?.status ?? "uploading"}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}
