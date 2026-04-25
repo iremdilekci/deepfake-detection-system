@@ -68,7 +68,9 @@ def to_result_response(video: Video, result: AnalysisResult) -> ResultResponse:
         final_score=final_score,
         final_label=final_label,
         llm_explanation=details.get("llmExplanation"),
+        text_explanations=details.get("textExplanations", []),
         modalities=modalities,
+        chart_data=details.get("chartData"),
         video_meta=VideoMeta(
             filename=video.original_filename,
             source_type=_source_type(video),

@@ -1,8 +1,31 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend as ChartJSLegend,
+  Filler,
+} from "chart.js";
+import { Line } from "react-chartjs-2";
 
 import { AnalysisResultViewModel, AnalysisStatus, UploadSummary } from "@/lib/analysis-contract";
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  ChartJSLegend,
+  Filler
+);
 
 interface AnalysisResultPanelProps {
   result: AnalysisResultViewModel | null;
@@ -35,6 +58,55 @@ export default function AnalysisResultPanel({
 
   const headline = getHeadline(result);
   const badgeTone = getBadgeTone(result?.status ?? status?.status ?? "processing");
+
+  const chartData = useMemo(() => {
+    if (!result?.chartData || result.chartData.labels.length === 0) return null;
+    
+    // API'den standart Dataset/Labels formatında geliyor, sadece UI renklerini inject ediyoruz
+    return {
+      labels: result.chartData.labels,
+      datasets: [
+        {
+          ...result.chartData.datasets[0],
+          borderColor: "#6366f1",
+          backgroundColor: "rgba(99, 102, 241, 0.1)",
+          tension: 0.4,
+          fill: true,
+        },
+        {
+          ...result.chartData.datasets[1],
+          borderColor: "#10b981",
+          backgroundColor: "rgba(16, 185, 129, 0.1)",
+          tension: 0.4,
+          fill: true,
+        },
+      ],
+    };
+  }, [result?.chartData]);
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      y: {
+        min: 0,
+        max: 100,
+        ticks: {
+          callback: (value: any) => `${value}%`,
+        },
+      },
+    },
+    plugins: {
+      legend: {
+        position: "top" as const,
+      },
+      tooltip: {
+        callbacks: {
+          label: (context: any) => `${context.dataset.label}: %${context.raw}`,
+        },
+      },
+    },
+  };
 
   useEffect(() => {
     return () => {
@@ -125,9 +197,22 @@ export default function AnalysisResultPanel({
               );
             })}
           </div>
+        )}
+      </div>
+
+      <div className="rounded-[28px] border border-slate-200 bg-white p-5">
+        <div className="mb-4">
+          <p className="text-sm font-semibold text-slate-900">Skor Dagilimi (Trend)</p>
+          <p className="mt-1 text-sm text-slate-500">Video suresince saniye bazli deepfake olasilik degisimi.</p>
+        </div>
+        
+        {chartData ? (
+          <div className="h-[250px] w-full">
+            <Line data={chartData} options={chartOptions} />
+          </div>
         ) : (
-          <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
-            Modalite detaylari bu is icin hazir degil.
+          <div className="flex h-[250px] items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500">
+            Trend grafigi bu analiz icin mevcut degil.
           </div>
         )}
       </div>

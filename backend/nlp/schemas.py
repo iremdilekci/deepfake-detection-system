@@ -19,10 +19,17 @@ class SentimentResult(BaseModel):
         description="Ön işlemeden geçirilmiş temiz metin",
         json_schema_extra={"example": "Bu video çok şüpheli görünüyor"},
     )
-    sentiment_label: str = Field(
+    sentiment: str = Field(
         ...,
         description="Duygu etiketi: positive, negative veya neutral",
         json_schema_extra={"example": "negative"},
+    )
+    polarity: float = Field(
+        ...,
+        ge=-1.0,
+        le=1.0,
+        description="Duygu polaritesi (-1.0 ile +1.0 arası: negatiften pozitife)",
+        json_schema_extra={"example": -0.85},
     )
     confidence_score: float = Field(
         ...,
@@ -30,6 +37,18 @@ class SentimentResult(BaseModel):
         le=1.0,
         description="Modelin tahmin güven skoru (0.0 – 1.0)",
         json_schema_extra={"example": 0.92},
+    )
+    fake_comment_score: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Yorumun sahte/spam olma olasılık skoru (0.0 – 1.0)",
+        json_schema_extra={"example": 0.75},
+    )
+    explanations: list[str] = Field(
+        default_factory=list,
+        description="Skorların ve analizlerin nedenlerini açıklayan metinler",
+        json_schema_extra={"example": ["Aşırı büyük harf kullanımı tespit edildi.", "Şüpheli kelimeler bulundu: link"]},
     )
 
 

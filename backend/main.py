@@ -25,6 +25,9 @@ from services.analysis_service import AnalysisService
 from services.file_storage_service import FileStorageService
 from services.upload_service import UploadService
 from services.upload_validation_service import UploadValidationService
+from fastapi.concurrency import run_in_threadpool
+from nlp.schemas import SentimentBatchRequest, SentimentBatchResponse
+from nlp.sentiment import SentimentAnalyzer, get_analyzer
 
 # Modelleri yükle (Base.metadata'ya kaydolsunlar)
 import models  # noqa: F401
@@ -173,6 +176,26 @@ def create_app(enable_lifespan: bool = True) -> FastAPI:
     ):
         video, result = await analysis_service.get_result(job_id)
         return to_result_response(video, result)
+
+    @app.post(
+        "/text/analyze",
+        response_model=SentimentBatchResponse,
+        tags=["nlp"],
+        summary="Metin listesi için duygu analizi",
+    )
+    async def analyze_text(
+        body: SentimentBatchRequest,
+        analyzer: SentimentAnalyzer = Depends(get_analyzer),
+    ):
+        """
+        Verilen metin listesini toplu olarak duygu analizinden geçirir.
+        Maksimum 50 metin desteklenir (SentimentBatchRequest validasyonu).
+        """
+        results = await run_in_threadpool(analyzer.analyze_batch, body.texts)
+        return SentimentBatchResponse(
+            results=results,
+            total=len(results),
+        )
 
     return app
 

@@ -89,6 +89,15 @@ class VideoMeta(ApiModel):
     duration_seconds: float | None = None
 
 
+class ChartDataset(ApiModel):
+    label: str
+    data: list[float]
+
+class ChartData(ApiModel):
+    labels: list[str]
+    datasets: list[ChartDataset]
+
+
 class ResultResponse(ApiModel):
     job_id: str
     video_id: str
@@ -96,7 +105,9 @@ class ResultResponse(ApiModel):
     final_score: float | None = Field(default=None, ge=0, le=1)
     final_label: Literal["fake", "real", "uncertain"] | None = None
     llm_explanation: str | None = None
+    text_explanations: list[str] = Field(default_factory=list)
     modalities: list[ModalityScore] = Field(default_factory=list)
+    chart_data: ChartData | None = None
     video_meta: VideoMeta
     errors: list[str] = Field(default_factory=list)
     updated_at: datetime

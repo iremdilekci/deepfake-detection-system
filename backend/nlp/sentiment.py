@@ -96,8 +96,11 @@ class SentimentAnalyzer:
             return SentimentResult(
                 text=text,
                 cleaned_text="",
-                sentiment_label="neutral",
+                sentiment="neutral",
+                polarity=0.0,
                 confidence_score=0.0,
+                fake_comment_score=0.0,
+                explanations=["Metin boş veya anlamsız."],
             )
 
         # Tokenize
@@ -125,12 +128,64 @@ class SentimentAnalyzer:
         raw_label = self._id2label.get(predicted_idx, f"LABEL_{predicted_idx}")
         label = self._resolve_label(raw_label)
 
+        # Polarity hesaplama: P(positive) - P(negative)
+        polarity = 0.0
+        for idx, prob in enumerate(probabilities):
+            lbl = self._resolve_label(self._id2label.get(idx, f"LABEL_{idx}"))
+            if lbl == "positive":
+                polarity += prob.item()
+            elif lbl == "negative":
+                polarity -= prob.item()
+        
+        polarity_val = round(polarity, 4)
+        
+        # Fake comment skoru ve açıklamaları hesapla
+        fake_score, explanations = self._calculate_fake_score(text, polarity_val)
+
         return SentimentResult(
             text=text,
             cleaned_text=cleaned,
-            sentiment_label=label,
+            sentiment=label,
+            polarity=polarity_val,
             confidence_score=round(confidence, 4),
+            fake_comment_score=fake_score,
+            explanations=explanations,
         )
+
+    def _calculate_fake_score(self, text: str, polarity: float) -> tuple[float, list[str]]:
+        """Metnin sahte, bot veya spam olma olasılığını sezgisel kurallarla hesaplar."""
+        score = 0.0
+        explanations = []
+        
+        # 1. Aşırı büyük harf kullanımı
+        upper_chars = sum(1 for c in text if c.isupper())
+        if len(text) > 0 and (upper_chars / len(text)) > 0.3:
+            score += 0.3
+            explanations.append("Aşırı büyük harf kullanımı tespit edildi.")
+            
+        # 2. Şüpheli anahtar kelimeler
+        spam_keywords = ["tıkla", "link", "kazan", "bedava", "kampanya", "kesinlikle", "sahte", "gerçek değil", "harika ötesi", "şok"]
+        lower_text = text.lower()
+        found_spam = [kw for kw in spam_keywords if kw in lower_text]
+        if found_spam:
+            score += min(0.4, len(found_spam) * 0.2)
+            explanations.append(f"Şüpheli kelimeler bulundu: {', '.join(found_spam)}")
+            
+        # 3. Aşırı noktalama işaretleri
+        if text.count('!') > 2 or text.count('?') > 2:
+            score += 0.2
+            explanations.append("Aşırı noktalama işareti kullanımı (spam belirtisi olabilir).")
+            
+        # 4. Polarity uç noktalarda ise
+        if abs(polarity) > 0.9:
+            score += 0.1
+            explanations.append("Duygu analizi uç noktada, manipülatif olabilir.")
+            
+        score = min(1.0, score)
+        if score == 0.0:
+            explanations.append("Metin doğal ve organik görünüyor.")
+            
+        return round(score, 3), explanations
 
     def analyze_batch(self, texts: list[str]) -> list[SentimentResult]:
         """

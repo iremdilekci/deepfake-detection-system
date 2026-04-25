@@ -54,6 +54,16 @@ export interface ModalityScoreDto {
   verdict: "fake" | "real" | "uncertain";
 }
 
+export interface ChartDatasetDto {
+  label: string;
+  data: number[];
+}
+
+export interface ChartDataDto {
+  labels: string[];
+  datasets: ChartDatasetDto[];
+}
+
 export interface ResultResponseDto {
   jobId: string;
   videoId: string;
@@ -61,7 +71,9 @@ export interface ResultResponseDto {
   finalScore?: number | null;
   finalLabel?: "fake" | "real" | "uncertain" | null;
   llmExplanation?: string | null;
+  textExplanations?: string[];
   modalities: ModalityScoreDto[];
+  chartData?: ChartDataDto | null;
   videoMeta: {
     filename?: string | null;
     sourceType: SourceType;
@@ -103,7 +115,9 @@ export interface AnalysisResultViewModel {
   finalScore: number | null;
   finalLabel: "fake" | "real" | "uncertain" | null;
   llmExplanation: string | null;
+  textExplanations: string[];
   modalities: ModalityScoreDto[];
+  chartData?: ChartDataDto | null;
   updatedAt: string;
   errors: string[];
   videoMeta: {
