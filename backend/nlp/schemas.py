@@ -26,10 +26,10 @@ class SentimentResult(BaseModel):
     )
     polarity: float = Field(
         ...,
-        ge=-1.0,
+        ge=0.0,
         le=1.0,
-        description="Duygu polaritesi (-1.0 ile +1.0 arası: negatiften pozitife)",
-        json_schema_extra={"example": -0.85},
+        description="Duygu polaritesi (0.0 ile 1.0 arası: 0.0=negatif, 0.5=nötr, 1.0=pozitif)",
+        json_schema_extra={"example": 0.15},
     )
     confidence_score: float = Field(
         ...,

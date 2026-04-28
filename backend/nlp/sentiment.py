@@ -97,7 +97,7 @@ class SentimentAnalyzer:
                 text=text,
                 cleaned_text="",
                 sentiment="neutral",
-                polarity=0.0,
+                polarity=0.5,
                 confidence_score=0.0,
                 fake_comment_score=0.0,
                 explanations=["Metin boş veya anlamsız."],
@@ -137,7 +137,8 @@ class SentimentAnalyzer:
             elif lbl == "negative":
                 polarity -= prob.item()
         
-        polarity_val = round(polarity, 4)
+        # Normalizasyon: [-1, 1] aralığını [0, 1] aralığına çek (video/ses ile aynı format)
+        polarity_val = round((polarity + 1.0) / 2.0, 4)
         
         # Fake comment skoru ve açıklamaları hesapla
         fake_score, explanations = self._calculate_fake_score(text, polarity_val)
@@ -176,8 +177,8 @@ class SentimentAnalyzer:
             score += 0.2
             explanations.append("Aşırı noktalama işareti kullanımı (spam belirtisi olabilir).")
             
-        # 4. Polarity uç noktalarda ise
-        if abs(polarity) > 0.9:
+        # 4. Polarity uç noktalarda ise (Normalleştirilmiş 0-1 aralığı için)
+        if polarity < 0.05 or polarity > 0.95:
             score += 0.1
             explanations.append("Duygu analizi uç noktada, manipülatif olabilir.")
             
@@ -190,14 +191,105 @@ class SentimentAnalyzer:
     def analyze_batch(self, texts: list[str]) -> list[SentimentResult]:
         """
         Birden fazla metin için toplu duygu analizi.
-
-        Args:
-            texts: Metin listesi.
-
-        Returns:
-            SentimentResult listesi.
+        Hata yönetimi ve gerçek batch çıkarımı (inference) ile akış hızı iyileştirilmiştir.
         """
-        return [self.analyze(t) for t in texts]
+        results = []
+        valid_texts = []
+        valid_indices = []
+        
+        # 1. Ön işleme ve hata yönetimi
+        for i, text in enumerate(texts):
+            try:
+                cleaned = preprocess_text(text)
+                if not cleaned:
+                    results.append(SentimentResult(
+                        text=text,
+                        cleaned_text="",
+                        sentiment="neutral",
+                        polarity=0.5,
+                        confidence_score=0.0,
+                        fake_comment_score=0.0,
+                        explanations=["Metin boş veya anlamsız."]
+                    ))
+                else:
+                    valid_texts.append(cleaned)
+                    valid_indices.append((i, text, cleaned))
+                    results.append(None) # Yer tutucu
+            except Exception as e:
+                logger.error("Metin ön işleme hatası: %s", e)
+                results.append(SentimentResult(
+                    text=text,
+                    cleaned_text="",
+                    sentiment="neutral",
+                    polarity=0.5,
+                    confidence_score=0.0,
+                    fake_comment_score=0.0,
+                    explanations=[f"Ön işleme hatası: {str(e)}"]
+                ))
+
+        if not valid_texts:
+            return results
+
+        # 2. Toplu Tokenize (Batch Tokenization) ve Çıkarım - Akış Hızı İyileştirmesi
+        try:
+            inputs = self.tokenizer(
+                valid_texts,
+                return_tensors="pt",
+                truncation=True,
+                max_length=512,
+                padding=True,
+            )
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            
+            with torch.no_grad():
+                outputs = self.model(**inputs)
+                logits = outputs.logits
+                probabilities = torch.softmax(logits, dim=-1)
+                
+            for idx, (orig_i, orig_text, cleaned_text) in enumerate(valid_indices):
+                probs = probabilities[idx]
+                predicted_idx = torch.argmax(probs).item()
+                confidence = probs[predicted_idx].item()
+
+                raw_label = self._id2label.get(predicted_idx, f"LABEL_{predicted_idx}")
+                label = self._resolve_label(raw_label)
+
+                polarity = 0.0
+                for label_idx, prob in enumerate(probs):
+                    lbl = self._resolve_label(self._id2label.get(label_idx, f"LABEL_{label_idx}"))
+                    if lbl == "positive":
+                        polarity += prob.item()
+                    elif lbl == "negative":
+                        polarity -= prob.item()
+                
+                # Normalizasyon: [-1, 1] -> [0, 1]
+                polarity_val = round((polarity + 1.0) / 2.0, 4)
+                fake_score, explanations = self._calculate_fake_score(orig_text, polarity_val)
+
+                results[orig_i] = SentimentResult(
+                    text=orig_text,
+                    cleaned_text=cleaned_text,
+                    sentiment=label,
+                    polarity=polarity_val,
+                    confidence_score=round(confidence, 4),
+                    fake_comment_score=fake_score,
+                    explanations=explanations,
+                )
+
+        except Exception as e:
+            logger.error("Toplu model çıkarım hatası: %s", e)
+            for orig_i, orig_text, cleaned_text in valid_indices:
+                results[orig_i] = SentimentResult(
+                    text=orig_text,
+                    cleaned_text=cleaned_text,
+                    sentiment="neutral",
+                    polarity=0.5,
+                    confidence_score=0.0,
+                    fake_comment_score=0.0,
+                    explanations=["Model çıkarım aşamasında hata oluştu."]
+                )
+
+        return results
 
 
 @lru_cache(maxsize=1)

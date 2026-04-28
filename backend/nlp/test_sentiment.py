@@ -92,7 +92,7 @@ def main():
             "neutral":  "[~]",
         }.get(result.sentiment, "[?]")
 
-        print(f"  {label_marker} [{result.sentiment.upper():>8}] (polarity: {result.polarity:+.2f}, guven: {result.confidence_score:.2%})")
+        print(f"  {label_marker} [{result.sentiment.upper():>8}] (polarity: {result.polarity:.2f}, guven: {result.confidence_score:.2%})")
         print(f"     Orijinal:   {result.text}")
         print(f"     Temiz:      {result.cleaned_text}")
         print()

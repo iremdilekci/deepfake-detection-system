@@ -157,7 +157,7 @@ class AnalysisService:
         final_score = self._normalize_and_combine_scores(visual_score, audio_score, text_score)
         
         # Grafik (Chart.js) verisinin hazırlanması
-        chart_data = self._generate_chart_data(video, visual_score, audio_score)
+        chart_data = self._generate_chart_data(video, visual_score, audio_score, text_score)
         
         is_fake = final_score >= 0.5
 
@@ -252,7 +252,7 @@ class AnalysisService:
             "verdict": verdict,
         }
 
-    def _generate_chart_data(self, video: Video, visual_base: float, audio_base: float) -> dict:
+    def _generate_chart_data(self, video: Video, visual_base: float, audio_base: float, text_base: float) -> dict:
         """Video süresi boyunca frame/zaman bazlı skor dağılımını (Dataset/Labels) simüle eder."""
         import random
         duration = video.duration_seconds or 15.0
@@ -260,6 +260,7 @@ class AnalysisService:
         labels = []
         visual_data = []
         audio_data = []
+        text_data = []
         
         # Her 1 saniyede bir veri noktası
         for sec in range(int(duration) + 1):
@@ -268,15 +269,18 @@ class AnalysisService:
             # Base skorlar etrafında küçük dalgalanmalar yaratıyoruz
             v_val = min(1.0, max(0.0, visual_base + random.uniform(-0.15, 0.15)))
             a_val = min(1.0, max(0.0, audio_base + random.uniform(-0.15, 0.15)))
+            t_val = min(1.0, max(0.0, text_base + random.uniform(-0.10, 0.10)))
             
             visual_data.append(round(v_val * 100, 1))
             audio_data.append(round(a_val * 100, 1))
+            text_data.append(round(t_val * 100, 1))
             
         return {
             "labels": labels,
             "datasets": [
                 {"label": "Gorsel Sinyal", "data": visual_data},
-                {"label": "Ses Sinyali", "data": audio_data}
+                {"label": "Ses Sinyali", "data": audio_data},
+                {"label": "Metin Sinyali", "data": text_data}
             ]
         }
 

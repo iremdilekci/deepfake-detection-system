@@ -22,7 +22,7 @@ async def dummy_test():
     
     # Generate chart data
     print("Generating Chart Data (Dataset/Labels format)...")
-    chart_data_dict = service._generate_chart_data(dummy_video, visual_base=0.4, audio_base=0.6)
+    chart_data_dict = service._generate_chart_data(dummy_video, visual_base=0.4, audio_base=0.6, text_base=0.5)
     
     print("\nRaw Output Dictionary:")
     print(chart_data_dict)
