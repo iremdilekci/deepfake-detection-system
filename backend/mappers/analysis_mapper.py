@@ -3,6 +3,7 @@ from __future__ import annotations
 from models.analysis import AnalysisResult
 from models.video import Video
 from schemas.api_models import (
+    ChartData,
     JobStatus,
     JobStatusResponse,
     ModalityScore,
@@ -51,26 +52,45 @@ def to_status_response(
 
 def to_result_response(video: Video, result: AnalysisResult) -> ResultResponse:
     details = result.details or {}
+
+    # Modalite listesi
     modalities = [
         ModalityScore.model_validate(modality)
         for modality in details.get("modalities", [])
     ]
+
+    # Hata mesajları
     errors = [result.error_message] if result.error_message else []
+    errors += details.get("errors", [])
+
+    # Final skor ve etiket
     final_score = result.fake_probability
     final_label = details.get("finalLabel")
     if final_label is None and result.is_fake is not None:
         final_label = "fake" if result.is_fake else "real"
 
+    # Modalite bazlı ham skorlar
+    video_score = details.get("videoScore")
+    audio_score = details.get("audioScore")
+    text_score  = details.get("textScore")
+
+    # Grafik verisi
+    chart_data_raw = details.get("chartData")
+    chart_data = ChartData.model_validate(chart_data_raw) if chart_data_raw else None
+
     return ResultResponse(
         job_id=str(video.id),
         video_id=str(video.id),
         status=JobStatus(video.status),
+        video_score=video_score,
+        audio_score=audio_score,
+        text_score=text_score,
         final_score=final_score,
         final_label=final_label,
         llm_explanation=details.get("llmExplanation"),
         text_explanations=details.get("textExplanations", []),
         modalities=modalities,
-        chart_data=details.get("chartData"),
+        chart_data=chart_data,
         video_meta=VideoMeta(
             filename=video.original_filename,
             source_type=_source_type(video),

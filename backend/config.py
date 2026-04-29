@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # İsteğe bağlı: Tam bağlantı stringi (.env'de override edilebilir)
     database_url: str | None = None
 
+    # ── Gemini ──
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-1.5-flash"
+
+
     @property
     def allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",")]
