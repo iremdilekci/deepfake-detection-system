@@ -13,5 +13,6 @@ transformers>=4.40.0
 torch>=2.2.0
 psycopg[binary]
 httpx
+google-genai
 pytest
 pytest-asyncio

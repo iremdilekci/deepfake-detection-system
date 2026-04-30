@@ -1,6 +1,22 @@
-from contextlib import asynccontextmanager
+"""
+VeraDeep API — FastAPI uygulama giriş noktası.
 
-from fastapi import Depends, FastAPI, File, UploadFile, status
+Endpoint grupları:
+- /           → Sağlık kontrolü
+- /upload-*   → Video yükleme (dosya veya URL)
+- /analyze/*  → Analiz iş akışı
+- /jobs/*     → Polling (iş durumu)
+- /results/*  → Tamamlanmış analiz sonucu
+- /audio-analysis/* → Ses modalitesi detayı (sprint görevi)
+- /model-metrics    → SWAN-DF benchmark metrik tablosu (sprint görevi)
+- /text/analyze     → NLP duygu analizi (sprint görevi)
+"""
+
+from contextlib import asynccontextmanager
+from typing import Any
+
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,22 +28,31 @@ from mappers.analysis_mapper import (
     to_status_response,
     to_upload_response,
 )
+from nlp.schemas import SentimentBatchRequest, SentimentBatchResponse
+
+# torch/transformers opsiyonel — kurulu değilse NLP endpoint devre dışı kalır
+try:
+    from nlp.sentiment import SentimentAnalyzer, get_analyzer
+    _NLP_AVAILABLE = True
+except ImportError:
+    _NLP_AVAILABLE = False
+    SentimentAnalyzer = None  # type: ignore[assignment,misc]
+    get_analyzer = None       # type: ignore[assignment]
 from repositories.analysis_result_repository import AnalysisResultRepository
 from repositories.video_repository import VideoRepository
 from schemas.api_models import (
     AnalyzeRequest,
     JobStatusResponse,
+    ModalityScore,
     ResultResponse,
     UploadAcceptedResponse,
     UrlUploadRequest,
 )
 from services.analysis_service import AnalysisService
+from services.evaluation_service import EvaluationService
 from services.file_storage_service import FileStorageService
 from services.upload_service import UploadService
 from services.upload_validation_service import UploadValidationService
-from fastapi.concurrency import run_in_threadpool
-from nlp.schemas import SentimentBatchRequest, SentimentBatchResponse
-from nlp.sentiment import SentimentAnalyzer, get_analyzer
 
 # Modelleri yükle (Base.metadata'ya kaydolsunlar)
 import models  # noqa: F401
@@ -39,10 +64,10 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.execute(text("SELECT 1"))
         await conn.run_sync(Base.metadata.create_all)
-    print("✅ Veritabanı bağlantısı doğrulandı.")
+    print("[OK] Veritabani baglantisi dogrulandi.")
     yield
     await engine.dispose()
-    print("🔌 Veritabanı bağlantısı kapatıldı.")
+    print("[--] Veritabani baglantisi kapatildi.")
 
 
 @asynccontextmanager
@@ -177,25 +202,92 @@ def create_app(enable_lifespan: bool = True) -> FastAPI:
         video, result = await analysis_service.get_result(job_id)
         return to_result_response(video, result)
 
+    # ── Sprint Görevi 1: Ses analizi endpoint'i ──────────────────────────────
+    @app.get(
+        "/audio-analysis/{job_id}",
+        response_model=ModalityScore | None,
+        tags=["analysis"],
+        summary="Ses modalitesi analiz sonucunu getir",
+        description=(
+            "Tamamlanmış bir analizden yalnızca ses (audio) modalitesini döndürür. "
+            "Analiz henüz tamamlanmamışsa veya ses verisi yoksa 404 döner."
+        ),
+    )
+    async def get_audio_analysis(
+        job_id: str,
+        analysis_service: AnalysisService = Depends(get_analysis_service),
+    ):
+        """
+        /analyze/audio sprint görevinin karşılığı.
+        Mevcut analiz sonucundan ses modalitesini filtreler ve döndürür.
+        Gerçek ses modelinin Sprint 3'te entegre edilmesi planlanmaktadır.
+        """
+        video, result = await analysis_service.get_result(job_id)
+        details = result.details or {}
+
+        # Modalities listesinden audio kaydını bul
+        audio_modality = next(
+            (m for m in details.get("modalities", []) if m.get("key") == "audio"),
+            None,
+        )
+        if not audio_modality:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Bu iş için ses analizi verisi bulunamadı. Analiz tamamlanmamış olabilir.",
+            )
+
+        return ModalityScore.model_validate(audio_modality)
+
+    # ── Sprint Görevi 5: SWAN-DF model metrikleri ────────────────────────────
+    @app.get(
+        "/model-metrics",
+        response_model=dict[str, Any],
+        tags=["evaluation"],
+        summary="SWAN-DF benchmark metrik tablosu",
+        description=(
+            "Görsel, ses ve metin modellerinin Accuracy, Precision, Recall, F1-Score "
+            "değerlerini döndürür. Frontend'deki MetricsTable bileşeni bu veriyi tüketir."
+        ),
+    )
+    async def get_model_metrics():
+        """
+        SWAN-DF dataset üzerindeki benchmark metrikleri.
+        Gerçek model eğitimi tamamlandığında bu değerler dinamik hale gelecek.
+        """
+        evaluation_service = EvaluationService()
+        return evaluation_service.get_benchmark()
+
+    # ── Sprint Görevi NLP: Metin duygu analizi ───────────────────────────────
     @app.post(
         "/text/analyze",
         response_model=SentimentBatchResponse,
         tags=["nlp"],
-        summary="Metin listesi için duygu analizi",
+        summary="Metin listesi için duygu ve spam analizi",
+        description=(
+            "Verilen metin listesini Türkçe BERT modeli ile analiz eder. "
+            "Her metin için sentiment etiketi, polarity ve fake_comment_score döner. "
+            "Maksimum 50 metin desteklenir. "
+            "torch/transformers kurulu değilse 503 döner."
+        ),
     )
-    async def analyze_text(
-        body: SentimentBatchRequest,
-        analyzer: SentimentAnalyzer = Depends(get_analyzer),
-    ):
+    async def analyze_text(body: SentimentBatchRequest):
         """
-        Verilen metin listesini toplu olarak duygu analizinden geçirir.
-        Maksimum 50 metin desteklenir (SentimentBatchRequest validasyonu).
+        NLP sprint görevi — savasy/bert-base-turkish-sentiment-cased modeli kullanır.
+        Model ilk çağrıda Hugging Face'den indirilir ve bellekte önbelleğe alınır.
+        torch kurulu değilse kurulum talimatı içeren hata döner.
         """
+        if not _NLP_AVAILABLE or get_analyzer is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "NLP modülü şu an kullanılamıyor. "
+                    "torch ve transformers paketlerini yükleyin: "
+                    "pip install torch transformers"
+                ),
+            )
+        analyzer = get_analyzer()
         results = await run_in_threadpool(analyzer.analyze_batch, body.texts)
-        return SentimentBatchResponse(
-            results=results,
-            total=len(results),
-        )
+        return SentimentBatchResponse(results=results, total=len(results))
 
     return app
 

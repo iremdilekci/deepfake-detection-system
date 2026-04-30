@@ -49,16 +49,22 @@ export interface JobStatusResponseDto {
 export interface ModalityScoreDto {
   key: "visual" | "audio" | "text";
   label: string;
-  score: number;
-  confidence: number;
-  verdict: "fake" | "real" | "uncertain";
+  score: number | null;
+  confidence: number | null;
+  verdict: "fake" | "real" | "uncertain" | null;
+  // Fusion algoritmasında bu modaliteye atanan normalize ağırlık (yeni)
+  weight: number;
+  // Analiz başarıyla tamamlandı mı (yeni)
+  available: boolean;
 }
 
+// Recharts bileşenine beslenen tek bir veri serisi (yeni)
 export interface ChartDatasetDto {
   label: string;
   data: number[];
 }
 
+// Zaman serisi grafik verisi — X ekseni saniye, Y ekseni 0-100 yüzde (yeni)
 export interface ChartDataDto {
   labels: string[];
   datasets: ChartDatasetDto[];
@@ -70,10 +76,15 @@ export interface ResultResponseDto {
   status: JobStatus;
   finalScore?: number | null;
   finalLabel?: "fake" | "real" | "uncertain" | null;
+  // Gemini API'den gelen Türkçe açıklama metni
   llmExplanation?: string | null;
-  textExplanations?: string[];
   modalities: ModalityScoreDto[];
+  // Recharts için zaman serisi grafik verisi (yeni)
   chartData?: ChartDataDto | null;
+  // Fusion algoritmasının kullandığı ağırlıklar (yeni, debug/sunum için)
+  fusionWeights?: Record<string, number>;
+  // NLP modülünden gelen spam/bot açıklama satırları (yeni)
+  textExplanations?: string[];
   videoMeta: {
     filename?: string | null;
     sourceType: SourceType;
@@ -114,10 +125,15 @@ export interface AnalysisResultViewModel {
   status: JobStatus;
   finalScore: number | null;
   finalLabel: "fake" | "real" | "uncertain" | null;
+  // Gemini API'den gelen Türkçe açıklama
   llmExplanation: string | null;
-  textExplanations: string[];
   modalities: ModalityScoreDto[];
-  chartData?: ChartDataDto | null;
+  // Recharts grafik verisi (yeni)
+  chartData: ChartDataDto | null;
+  // Fusion ağırlıkları (yeni)
+  fusionWeights: Record<string, number>;
+  // NLP açıklama satırları (yeni)
+  textExplanations: string[];
   updatedAt: string;
   errors: string[];
   videoMeta: {

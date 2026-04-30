@@ -42,6 +42,12 @@ export function mapResultResponse(dto: ResultResponseDto): AnalysisResultViewMod
     finalLabel: dto.finalLabel ?? null,
     llmExplanation: dto.llmExplanation ?? null,
     modalities: dto.modalities,
+    // Recharts grafik verisi — yoksa null
+    chartData: dto.chartData ?? null,
+    // Fusion ağırlıkları — yoksa boş nesne
+    fusionWeights: dto.fusionWeights ?? {},
+    // NLP açıklama satırları — yoksa boş dizi
+    textExplanations: dto.textExplanations ?? [],
     updatedAt: dto.updatedAt,
     errors: dto.errors,
     videoMeta: {
