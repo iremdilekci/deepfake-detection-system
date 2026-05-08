@@ -1,5 +1,10 @@
 {
     "VeraDeep_Sync_Report": {
-        "final_risk_score": 0.8026629528467055
+        "primary_speaker_confidence": 0.2399,
+        "background_noise_level": "low",
+        "sync_lag_compensation": 0,
+        "final_risk_score": 0.7601,
+        "detected_scenario": "RİSKLİ: Dudak hareketli ama sesle uyumsuz (Deepfake Şüphesi)",
+        "frame_level_anomalies": []
     }
 }

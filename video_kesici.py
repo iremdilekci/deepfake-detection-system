@@ -70,11 +70,17 @@ class VideoYuzKesici:
                     return True
         return False
 
-    def videoyu_isle(self, video_yolu="test.mp4"):
+    def videoyu_isle(self, video_yolu="test.mp4", hedeflenen_fps=2):
         """Videoyu kare kare okuyup ön işleme adımlarını uygular."""
         print(f"[BİLGİ] Analiz başlatılıyor: {video_yolu}")
         cap = cv2.VideoCapture(video_yolu)
-        atlama_kare_sayisi = 2 
+        
+        orijinal_fps = cap.get(cv2.CAP_PROP_FPS)
+        if orijinal_fps <= 0: orijinal_fps = 30.0
+        
+        atlama_kare_sayisi = int(orijinal_fps / hedeflenen_fps)
+        if atlama_kare_sayisi < 1: atlama_kare_sayisi = 1
+        
         kare_idx = 0
         kayit_sayaci = 0
 

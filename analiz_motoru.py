@@ -17,7 +17,7 @@ class YapayZekaAnalizMotoru:
     def _modeli_yukle(self):
         """Yapay zeka modelini internetten veya önbellekten donanıma taşır."""
         print(f"[SİSTEM] Yapay Zeka Modeli Belleğe Alınıyor: {self.model_id}")
-        self.dedektif = pipeline("image-classification", model=self.model_id, device=self.cihaz)
+        self.dedektif = pipeline("image-classification", model=self.model_id, device=self.cihaz, batch_size=16)
 
     def _klasor_kontrolu(self, klasor_yolu):
         """Analiz edilecek görüntülerin bulunduğu klasörü doğrular."""
@@ -36,15 +36,35 @@ class YapayZekaAnalizMotoru:
         print("-" * 50)
         print(f"[ANALİZ] Toplam {len(dosyalar)} kare işleniyor...")
         skor_listesi = []
+        gorseller = []
+        gecerli_dosyalar = []
 
+        # 1. Resimleri belleğe yükle
         for dosya in dosyalar:
             tam_yol = os.path.join(klasor_yolu, dosya)
             try:
                 img = Image.open(tam_yol).convert("RGB")
-                tahminler = self.dedektif(img)
-                
-                # Modelin 'fake' veya 'LABEL_1' (Sahte) dediği değeri buluyoruz
+                gorseller.append(img)
+                gecerli_dosyalar.append(dosya)
+            except Exception as e:
+                print(f"[HATA] {dosya} açılamadı: {e}")
+
+        if not gorseller:
+            return []
+
+        # 2. Modeli Toplu (Batch) Çalıştır
+        try:
+            tahmin_sonuclari = self.dedektif(gorseller)
+            
+            # Tek bir görsel gönderildiyse liste listesi formatına uyarlamak için
+            if len(gorseller) == 1:
+                tahmin_sonuclari = [tahmin_sonuclari]
+
+            # 3. Sonuçları ayrıştır
+            for i, tahminler in enumerate(tahmin_sonuclari):
+                dosya = gecerli_dosyalar[i]
                 fake_skoru = 0.0
+                
                 for t in tahminler:
                     label = t['label'].lower()
                     if 'fake' in label or 'label_1' in label:
@@ -59,8 +79,8 @@ class YapayZekaAnalizMotoru:
                 grafik = "X" * dolu_bar + "-" * (bar_uzunlugu - dolu_bar)
                 print(f"|> {dosya[:15]:<15} |{grafik}| %{fake_skoru*100:.2f}")
 
-            except Exception as e:
-                print(f"[HATA] {dosya} işlenemedi: {e}")
+        except Exception as e:
+            print(f"[HATA] Yapay zeka modeli çalışırken çöktü: {e}")
                 
         return skor_listesi
 
@@ -69,8 +89,14 @@ class YapayZekaAnalizMotoru:
         if not skor_listesi:
             return
 
-        # Matematiksel Analiz
-        ortalama_yuzde = float(np.mean(skor_listesi) * 100)
+        # Matematiksel Analiz (Smoothing & Stabilite eklendi)
+        # Sadece ortalamaya güvenmek yerine 90. persantili (outlier'ları temizlenmiş tepe noktası) alıyoruz
+        ham_ortalama = float(np.mean(skor_listesi) * 100)
+        persantil_90 = float(np.percentile(skor_listesi, 90) * 100)
+        
+        # Ağırlıklı skor hesaplama (Smoothing)
+        ortalama_yuzde = (ham_ortalama * 0.60) + (persantil_90 * 0.40)
+        
         maksimum_yuzde = float(np.max(skor_listesi) * 100)
         tutarlilik = float((1 - np.std(skor_listesi)) * 100)
 
