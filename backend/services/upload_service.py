@@ -49,6 +49,13 @@ class UploadService:
     async def upload_url(self, url: str) -> Video:
         normalized_url = self.validator.validate_source_url(url)
 
+        # Duplicate (aynı URL) kaydı kontrolü
+        existing_video = await self.video_repository.get_by_source_url(normalized_url)
+        if existing_video:
+            # Eğer halihazırda varsa, mevcut analizi/videoyu döndür.
+            # Yeniden analiz kuyruğuna sokmak yerine mevcut durumu sunarız.
+            return existing_video
+
         video = await self.video_repository.add(
             Video(
                 owner_id=None,

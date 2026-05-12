@@ -129,3 +129,20 @@ class EvaluationService:
             "\\\\label{tab:metrics}\\n"
             "\\\\end{table}"
         )
+
+    def get_benchmark(self) -> dict[str, Any]:
+        """
+        Dashboard'daki MetricsTable bileşenine gönderilecek
+        SWAN-DF dataset metriklerini döndürür.
+        """
+        return {
+            "dataset": "SWAN-DF",
+            "description": "Multimodal deepfake tespit modeli benchmark değerleri.",
+            "note": "Gerçek model eğitimi Sprint 3'te planlanmaktadır.",
+            "modalities": [
+                { "name": "Görsel (Visual)", "key": "visual", "accuracy": 0.847, "precision": 0.831, "recall": 0.879, "f1_score": 0.854 },
+                { "name": "Ses (Audio)",     "key": "audio",  "accuracy": 0.763, "precision": 0.748, "recall": 0.792, "f1_score": 0.769 },
+                { "name": "Metin (NLP)",     "key": "text",   "accuracy": 0.712, "precision": 0.695, "recall": 0.734, "f1_score": 0.714 },
+                { "name": "Fusion",          "key": "fusion", "accuracy": 0.891, "precision": 0.876, "recall": 0.908, "f1_score": 0.892 },
+            ]
+        }

@@ -21,6 +21,12 @@ class VideoRepository:
     async def get(self, video_id: uuid.UUID) -> Video | None:
         return await self.session.get(Video, video_id)
 
+    async def get_by_source_url(self, source_url: str) -> Video | None:
+        from sqlalchemy import select
+        stmt = select(Video).where(Video.source_url == source_url)
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
+
     async def update_status(self, video: Video, status: JobStatus) -> Video:
         video.status = status.value
         await self.session.flush()

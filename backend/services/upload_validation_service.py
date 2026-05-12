@@ -25,7 +25,19 @@ class UploadValidationService:
     )
 
     def validate_upload_file(self, file: UploadFile) -> None:
-        extension = Path(file.filename or "").suffix.lower()
+        if not file.filename or not file.filename.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Dosya adı null veya bozuk olamaz."
+            )
+
+        extension = Path(file.filename).suffix.lower()
+        if not extension:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Geçerli bir dosya uzantısı bulunamadı."
+            )
+
         has_valid_content_type = file.content_type in self.accepted_content_types
         has_valid_extension = extension in self.accepted_extensions
 
