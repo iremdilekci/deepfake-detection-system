@@ -6,3 +6,7 @@ VeraDeep_Kareler/
 hatali_sonuclar/
 dataset/
 *.csv
+*.wav
+
+# Model ağırlıkları — yerel klasörde tutulur, repoya yüklenmez
+models/

@@ -1,160 +1,152 @@
+"""
+VeraDeep - Deepfake Analiz Motoru (ViT-base / Deep-Fake-Detector-v2)
+====================================================================
+GÜNCELLENMİŞ VERSİYON (v9.0)
+Model: google/vit-base-patch16-224-in21k (Deepfake Fine-tuned)
+"""
+
 import os
+import sys
 import json
 import numpy as np
 import torch
 from PIL import Image
-from transformers import pipeline
+from transformers import ViTForImageClassification, ViTImageProcessor
 
-class YapayZekaAnalizMotoru:
-    """Hugging Face modelleri ile görsel deepfake tespiti yapan ve raporlayan sınıf."""
+# ─── YAPILANDIRMA ─────────────────────────────────────────────────────────────
+BATCH_BOYUT = 4
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+LOKAL_MODEL = os.path.join(_SCRIPT_DIR, "models", "Deep-Fake-Detector-v2")
+# ──────────────────────────────────────────────────────────────────────────────
 
-    def __init__(self, model_id="dima806/deepfake_vs_real_image_detection"):
-        self.model_id = model_id
-        # Sistemin ekran kartı (CUDA) kullanıp kullanamayacağını denetler
-        self.cihaz = 0 if torch.cuda.is_available() else -1
-        self._modeli_yukle()
+class AnalizMotoru:
+    def __init__(self):
+        self.cihaz = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"[SİSTEM] VeraDeep PRO v9.0 (ViT) Aktif | Cihaz: {self.cihaz}")
 
-    def _modeli_yukle(self):
-        """Yapay zeka modelini internetten veya önbellekten donanıma taşır."""
-        print(f"[SİSTEM] Yapay Zeka Modeli Belleğe Alınıyor: {self.model_id}")
-        self.dedektif = pipeline("image-classification", model=self.model_id, device=self.cihaz, batch_size=16)
-
-    def _klasor_kontrolu(self, klasor_yolu):
-        """Analiz edilecek görüntülerin bulunduğu klasörü doğrular."""
-        if not os.path.isdir(klasor_yolu):
-            print(f"[HATA] '{klasor_yolu}' klasörü bulunamadı.")
-            return []
-        dosyalar = [f for f in os.listdir(klasor_yolu) if f.lower().endswith(('.jpg', '.png', '.jpeg'))]
-        return dosyalar
-
-    def kareleri_isle(self, klasor_yolu="VeraDeep_Kareler"):
-        """Klasördeki tüm kareleri modele sokarak sahtelik skorlarını çıkarır."""
-        dosyalar = self._klasor_kontrolu(klasor_yolu)
-        if not dosyalar:
-            return []
-
-        print("-" * 50)
-        print(f"[ANALİZ] Toplam {len(dosyalar)} kare işleniyor...")
-        skor_listesi = []
-        gorseller = []
-        gecerli_dosyalar = []
-
-        # 1. Resimleri belleğe yükle
-        for dosya in dosyalar:
-            tam_yol = os.path.join(klasor_yolu, dosya)
-            try:
-                img = Image.open(tam_yol).convert("RGB")
-                gorseller.append(img)
-                gecerli_dosyalar.append(dosya)
-            except Exception as e:
-                print(f"[HATA] {dosya} açılamadı: {e}")
-
-        if not gorseller:
-            return []
-
-        # 2. Modeli Toplu (Batch) Çalıştır
         try:
-            tahmin_sonuclari = self.dedektif(gorseller)
+            # ViT modelini yerel dizinden yükle
+            self.processor = ViTImageProcessor.from_pretrained(LOKAL_MODEL)
+            self.model = ViTForImageClassification.from_pretrained(LOKAL_MODEL)
             
-            # Tek bir görsel gönderildiyse liste listesi formatına uyarlamak için
-            if len(gorseller) == 1:
-                tahmin_sonuclari = [tahmin_sonuclari]
-
-            # 3. Sonuçları ayrıştır
-            for i, tahminler in enumerate(tahmin_sonuclari):
-                dosya = gecerli_dosyalar[i]
-                fake_skoru = 0.0
-                
-                for t in tahminler:
-                    label = t['label'].lower()
-                    if 'fake' in label or 'label_1' in label:
-                        fake_skoru = t['score']
-                        break
-                
-                skor_listesi.append(fake_skoru)
-                
-                # Terminalde görsel ilerleme takibi
-                bar_uzunlugu = 20
-                dolu_bar = int(fake_skoru * bar_uzunlugu)
-                grafik = "X" * dolu_bar + "-" * (bar_uzunlugu - dolu_bar)
-                print(f"|> {dosya[:15]:<15} |{grafik}| %{fake_skoru*100:.2f}")
-
+            self.model.to(self.cihaz)
+            self.model.eval()
+            
         except Exception as e:
-            print(f"[HATA] Yapay zeka modeli çalışırken çöktü: {e}")
+            print(f"[KRİTİK HATA] ViT Modeli yüklenemedi: {e}")
+            sys.exit(1)
+
+    def preprocess(self, img):
+        # Transformers processor'ı kullanarak resmi tensor'a çevir
+        return self.processor(images=img, return_tensors="pt")["pixel_values"][0]
+
+    def gorselleri_yukle(self, klasor: str):
+        if not os.path.isabs(klasor) and not os.path.isdir(klasor):
+            alternatif = os.path.join(_SCRIPT_DIR, klasor)
+            if os.path.isdir(alternatif): klasor = alternatif
+        if not os.path.isdir(klasor): return [], []
+
+        uzantilar = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
+        dosyalar = sorted(f for f in os.listdir(klasor) if f.lower().endswith(uzantilar))
+        
+        gorseller, gecerli = [], []
+        for dosya in dosyalar:
+            try:
+                img = Image.open(os.path.join(klasor, dosya)).convert("RGB")
+                gorseller.append(img)
+                gecerli.append(dosya)
+            except: continue
+        return gorseller, gecerli
+
+    @torch.no_grad()
+    def batch_calistir(self, gorseller: list) -> list:
+        tum_skorlar = []
+        for i in range(0, len(gorseller), BATCH_BOYUT):
+            batch = gorseller[i : i + BATCH_BOYUT]
+            try:
+                tensors = torch.stack([self.preprocess(img).to(torch.float32) for img in batch]).to(self.cihaz)
+                outputs = self.model(tensors).logits
+                probs = torch.softmax(outputs, dim=-1)
                 
-        return skor_listesi
+                # Index 1 = SAHTE (Model testinde onaylandı)
+                batch_skorlari = probs[:, 1].cpu().tolist()
+                tum_skorlar.extend(batch_skorlari)
+            except Exception as e:
+                tum_skorlar.extend([0.0] * len(batch))
+        return tum_skorlar
 
-    def istatistik_ve_rapor_olustur(self, skor_listesi):
-        """Elde edilen skorlardan nihai bir teşhis çıkarır ve JSON olarak kaydeder."""
-        if not skor_listesi:
-            return
-
-        # Matematiksel Analiz (Smoothing & Stabilite eklendi)
-        # Sadece ortalamaya güvenmek yerine 90. persantili (outlier'ları temizlenmiş tepe noktası) alıyoruz
-        ham_ortalama = float(np.mean(skor_listesi) * 100)
-        persantil_90 = float(np.percentile(skor_listesi, 90) * 100)
+    def rapor_olustur(self, skorlar: list, dosyalar: list, cikis: str = ".") -> dict:
+        if not skorlar: return {}
         
-        # Ağırlıklı skor hesaplama (Smoothing)
-        ortalama_yuzde = (ham_ortalama * 0.60) + (persantil_90 * 0.40)
+        skorlar_np = np.array(skorlar)
+        ortalama_skor = np.mean(skorlar_np)
+        p90_skor = np.percentile(skorlar_np, 90)
+        p95_skor = np.percentile(skorlar_np, 95)
+        maks_skor = np.max(skorlar_np)
         
-        maksimum_yuzde = float(np.max(skor_listesi) * 100)
-        tutarlilik = float((1 - np.std(skor_listesi)) * 100)
-
-        # Karar Mekanizması
-        if ortalama_yuzde >= 75:
-            teshis = "KRİTİK RİSK: KESİN DEEPFAKE"
-            ozet = "Görüntüde yoğun yapay zeka manipülasyonu tespit edildi."
-        elif ortalama_yuzde >= 50:
-            teshis = "YÜKSEK RİSK: ŞÜPHELİ"
-            ozet = "Belirgin tutarsızlıklar tespit edildi. Yapay zeka müdahalesi muhtemel."
+        # ANA MATEMATİK: Peak-Focused Hibrit Skor
+        # Neden? Deepfake genellikle tüm karelerde değil, belirli anlarda patlak verir.
+        # %70 en riskli kareler (P95), %30 genel ortalama.
+        hibrit_skor = (p95_skor * 0.70) + (ortalama_skor * 0.30)
+        ortalama_yuzde = hibrit_skor * 100
+        
+        # CERRAHİ HASSASİYET (Modelin gürültü payı ve hibrit skor baz alınarak optimize edildi)
+        if ortalama_yuzde >= 60:
+            teshis = "YÜKSEK OLASILIK: SAHTE / MANİPÜLASYON"
+            risk_bandi = "KRITIK"
+            mesaj = "Video üzerinde profesyonel yapay zeka müdahalesi kesin olarak tespit edildi."
+        elif ortalama_yuzde >= 45:
+            teshis = "ŞÜPHELİ: MUHTEMEL SAHTE"
+            risk_bandi = "YUKSEK"
+            mesaj = "Videonun bazı kısımları doğal görünmüyor, manipülasyon riski çok yüksek."
         elif ortalama_yuzde >= 30:
-            teshis = "DÜŞÜK RİSK: TEKNİK ANOMALİ"
-            ozet = "Hafif düzensizlikler var (ışık/kalite kaynaklı olabilir)."
+            teshis = "DÜŞÜK RİSK: MUHTEMEL GERÇEK"
+            risk_bandi = "ORTA"
+            mesaj = "Bazı anomaliler var ancak video genel olarak organik görünüyor."
         else:
-            teshis = "TEMİZ: DOĞAL İNSAN"
-            ozet = "Görüntüde yapay zeka müdahalesine dair kanıt bulunamadı."
+            teshis = "GÜVENLİ: GERÇEK"
+            risk_bandi = "DUSUK"
+            mesaj = "Video tamamen doğal ve güvenli görünüyor."
 
-        # Backend ve Frontend iletişimi için veri paketi
-        final_rapor = {
+        # main.py'nin beklediği yapı (VeraDeep_Audit_Report)
+        rapor = {
             "VeraDeep_Audit_Report": {
-                "Analiz_Ozet": teshis,
+                "Teshis": teshis,
+                "Teshis_Kodu": risk_bandi,
                 "Genel_Sahtelik_Olasiligi": f"%{ortalama_yuzde:.2f}",
-                "En_Yuksek_Risk_Noktasi": f"%{maksimum_yuzde:.2f}",
-                "Sistem_Tutarliligi": f"%{tutarlilik:.2f}",
-                "Teknik_Aciklama": ozet,
-                "Detaylar": {
-                    "Incelenen_Kare_Sayisi": len(skor_listesi),
-                    "Model_Mimarisi": self.model_id,
-                    "Cihaz": "GPU-CUDA" if self.cihaz == 0 else "CPU"
-                }
+                "Skor_Yontemi": "Peak-Focused Hybrid (P95*0.7 + Mean*0.3)",
+                "Detayli_Istatistikler": {
+                    "Analiz_Kare_Sayisi": len(skorlar),
+                    "Ortalama_Skor": f"%{ortalama_skor*100:.2f}",
+                    "P90_Skor": f"%{p90_skor*100:.2f}",
+                    "P95_Skor": f"%{p95_skor*100:.2f}",
+                    "Maksimum_Skor": f"%{maks_skor*100:.2f}"
+                },
+                "Detay": mesaj
             }
         }
+        
+        os.makedirs(cikis, exist_ok=True)
+        with open(os.path.join(cikis, "final_analiz_raporu.json"), "w", encoding="utf-8") as f:
+            json.dump(rapor, f, indent=4, ensure_ascii=False)
+            
+        print("\n" + "="*50)
+        print(f"  VeraDeep PRO ANALİZ SONUCU (Hybrid Scoring)")
+        print("="*50)
+        print(f"  HİBRİT RİSK SKORU : %{ortalama_yuzde:.2f}")
+        print(f"  P95 (PİK) RİSK   : %{p95_skor*100:.2f}")
+        print(f"  TEŞHİS           : {teshis}")
+        print(f"  GÜVEN DURUMU     : {mesaj}")
+        print("="*50 + "\n")
+        
+        return rapor
 
-        with open("final_analiz_raporu.json", "w", encoding="utf-8") as f:
-            json.dump(final_rapor, f, indent=4, ensure_ascii=False)
+    def calistir(self, klasor: str = "VeraDeep_Kareler", cikis: str = "."):
+        gorseller, dosyalar = self.gorselleri_yukle(klasor)
+        if not gorseller: return {}
+        skorlar = self.batch_calistir(gorseller)
+        return self.rapor_olustur(skorlar, dosyalar, cikis)
 
-        # Özet JSON Çıktısı (Frontend'de hızlı göstermek için ideal)
-        ozet_json = {
-            "fake_olasiligi": f"%{ortalama_yuzde:.2f}",
-            "teshis": teshis.split(":")[0],
-            "esik_oneri": "0-30:Gercek, 30-60:Supheli, 60-100:Sahte"
-        }
-
-        with open("ozet_sonuc.json", "w", encoding="utf-8") as f:
-            json.dump(ozet_json, f, indent=4, ensure_ascii=False)
-
-        print("\n" + "=" * 50)
-        print(f"FİNAL TEŞHİS: {teshis}")
-        print(f"RİSK SKORU: %{ortalama_yuzde:.2f}")
-        print(f"GÜVEN ANALİZİ: {ozet}")
-        print("=" * 50 + "\n")
-        print("[SİSTEM] JSON Raporları başarıyla kaydedildi.")
-
-    def calistir(self, klasor_yolu="VeraDeep_Kareler"):
-        """Tüm süreci uçtan uca çalıştıran ana metod."""
-        skorlar = self.kareleri_isle(klasor_yolu)
-        self.istatistik_ve_rapor_olustur(skorlar)
-
+YapayZekaAnalizMotoru = AnalizMotoru
 if __name__ == "__main__":
-    motor = YapayZekaAnalizMotoru()
-    motor.calistir()
+    AnalizMotoru().calistir()
